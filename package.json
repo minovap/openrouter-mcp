@@ -1,6 +1,6 @@
 {
   "name": "openrouter-mcp",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "MCP server for OpenRouter AI chat",
   "type": "module",
   "main": "src/index.js",
