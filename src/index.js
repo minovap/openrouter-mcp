@@ -106,7 +106,7 @@ server.tool(
       if (max_tokens !== undefined) requestParams.max_tokens = max_tokens;
       if (top_p !== undefined) requestParams.top_p = top_p;
 
-      const completion = await openRouter.chat.completions.create(requestParams);
+      const completion = await openRouter.chat.send(requestParams);
 
       const responseContent = completion.choices[0]?.message?.content || "No response received";
 
