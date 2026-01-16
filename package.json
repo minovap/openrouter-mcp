@@ -5,11 +5,26 @@
   "type": "module",
   "main": "src/index.js",
   "bin": {
-    "openrouter-mcp": "./src/index.js"
+    "openrouter-mcp": "src/index.js"
   },
   "scripts": {
     "start": "node src/index.js"
   },
+  "keywords": [
+    "mcp",
+    "openrouter",
+    "ai",
+    "llm",
+    "model-context-protocol"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/minovap/openrouter-mcp.git"
+  },
+  "license": "MIT",
+  "files": [
+    "src"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.2",
     "@openrouter/sdk": "^0.3.14",
