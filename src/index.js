@@ -23,52 +23,6 @@ const server = new McpServer({
 });
 
 server.tool(
-  "list_models",
-  "List available models from OpenRouter",
-  {},
-  async () => {
-    try {
-      const response = await fetch("https://openrouter.ai/api/v1/models", {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const models = data.data.map((m) => ({
-        id: m.id,
-        name: m.name,
-        context_length: m.context_length,
-        pricing: m.pricing,
-      }));
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(models, null, 2),
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error fetching models: ${error.message}`,
-          },
-        ],
-        isError: true,
-      };
-    }
-  }
-);
-
-server.tool(
   "send_message",
   "Send a message to an AI model via OpenRouter and receive a response",
   {
