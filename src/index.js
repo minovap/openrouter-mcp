@@ -45,7 +45,7 @@ server.tool(
     ),
     message: z.string().describe("Your question or request for the model"),
     system_prompt: z.string().optional().describe("Override the default system prompt"),
-    append_files: z.array(z.string()).describe("File paths to read and include as context. Use [\"\"] if no files are relevant."),
+    append_files: z.array(z.string()).describe("File paths to read and include as context. Pass [\"\"] if no files are relevant."),
   },
   async ({ model, message, system_prompt, append_files }) => {
     if (!append_files || append_files.length === 0) {
