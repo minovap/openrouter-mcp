@@ -33,7 +33,7 @@ const API_TIMEOUT = 120000; // 2 minutes
 
 const server = new McpServer({
   name: "openrouter-mcp",
-  version: "2.0.0",
+  version: "2.0.1",
 });
 
 server.tool(
@@ -45,9 +45,21 @@ server.tool(
     ),
     message: z.string().describe("Your question or request for the model"),
     system_prompt: z.string().optional().describe("Override the default system prompt"),
-    append_files: z.array(z.string()).optional().describe("File paths to read and include as context"),
+    append_files: z.array(z.string()).describe("File paths to read and include as context. Use [\"\"] if no files are relevant."),
   },
   async ({ model, message, system_prompt, append_files }) => {
+    if (!append_files || append_files.length === 0) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Files relevant to the context must be appended using file paths. If no files are relevant, pass [""] instead.`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
     if (!allowedModels.includes(model)) {
       return {
         content: [
@@ -63,11 +75,12 @@ server.tool(
     try {
       let fullMessage = message;
 
-      if (append_files?.length) {
-        if (append_files.length > MAX_FILES) {
-          throw new Error(`Too many files: ${append_files.length} exceeds maximum of ${MAX_FILES}`);
+      const filesToProcess = append_files.filter(f => f !== "");
+      if (filesToProcess.length) {
+        if (filesToProcess.length > MAX_FILES) {
+          throw new Error(`Too many files: ${filesToProcess.length} exceeds maximum of ${MAX_FILES}`);
         }
-        for (const filePath of append_files) {
+        for (const filePath of filesToProcess) {
           try {
             const fileStat = await stat(filePath);
             if (fileStat.size > MAX_FILE_SIZE) {
