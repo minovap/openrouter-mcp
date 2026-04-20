@@ -17,12 +17,12 @@ if (!apiKey) {
   process.exit(1);
 }
 
-if (!allowedModelsEnv) {
-  console.error("OPENROUTER_ALLOWED_MODELS environment variable is required (comma-separated list of model IDs)");
-  process.exit(1);
-}
+// allowedModels is null when OPENROUTER_ALLOWED_MODELS is unset — means allow any model.
+// Set the env var to a comma-separated list of model IDs to restrict access.
+const allowedModels = allowedModelsEnv
+  ? allowedModelsEnv.split(",").map(m => m.trim()).filter(Boolean)
+  : null;
 
-const allowedModels = allowedModelsEnv.split(",").map(m => m.trim()).filter(Boolean);
 const defaultSystemPrompt = process.env.OPENROUTER_SYSTEM_PROMPT || "";
 
 const openRouter = new OpenRouter({
@@ -41,7 +41,9 @@ server.tool(
   "Consult another AI model for help with coding tasks. Use this to get a second opinion, ask for explanations, or request assistance with complex problems.",
   {
     model: z.string().describe(
-      `The model to consult. Allowed models: ${allowedModels.join(", ")}`
+      allowedModels
+        ? `The model to consult. Allowed models: ${allowedModels.join(", ")}`
+        : "The model to consult. Any OpenRouter model ID is accepted."
     ),
     message: z.string().describe("Your question or request for the model"),
     system_prompt: z.string().optional().describe("Override the default system prompt"),
@@ -60,12 +62,12 @@ server.tool(
       };
     }
 
-    if (!allowedModels.includes(model)) {
+    if (allowedModels && !allowedModels.includes(model)) {
       return {
         content: [
           {
             type: "text",
-            text: `Model "${model}" is not allowed. Allowed models: ${allowedModels.join(", ")}`,
+            text: `Model "${model}" is not in the allowlist. Allowed models: ${allowedModels.join(", ")}`,
           },
         ],
         isError: true,
