@@ -54,7 +54,8 @@ describe('getTimeoutMs', () => {
     expect(getTimeoutMs()).toBe(120_000);
   });
 
-  // Hard-cap invariant tests: getTimeoutMs() never exceeds getMaxTimeoutMs() even when MAX < DEFAULT.
+  // Hard-cap invariant tests (panel-adopted: GPT-5.5 + DeepSeek-V4-Pro IMPORTANT).
+  // Verify getTimeoutMs() never exceeds getMaxTimeoutMs() even when MAX < DEFAULT.
   test('clamps default to max when MAX < DEFAULT_TIMEOUT_MS, env unset', () => {
     process.env.OPENROUTER_MAX_TIMEOUT_MS = '60000';  // 60s — below 120s default
     // env unset → would normally return 120000, but max=60000 → safeDefault clamps to 60000
@@ -80,7 +81,7 @@ describe('getTimeoutMs', () => {
     expect(getTimeoutMs()).toBe(30_000);
   });
 
-  // Edge cases that Number(raw) accepts as finite:
+  // PLAN-phase I4 adoption — edge cases that Number(raw) accepts as finite:
   test('rejects negative numbers', () => {
     process.env.OPENROUTER_TIMEOUT_MS = '-1';
     expect(getTimeoutMs()).toBe(120_000);
@@ -111,8 +112,8 @@ describe('getTimeoutMs', () => {
     expect(getTimeoutMs()).toBe(300_000);
   });
 
-  // Documents the broader Number()-parseable contract — env is operator-controlled
-  // so this is intentional, not a hazard.
+  // Documents the broader Number()-parseable contract (GPT-5.5 IMPORTANT — env is
+  // operator-controlled so this is intentional, not a hazard).
   test('accepts hex notation (0x493e0 = 300000)', () => {
     process.env.OPENROUTER_TIMEOUT_MS = '0x493e0';
     expect(getTimeoutMs()).toBe(300_000);
@@ -189,6 +190,9 @@ describe('getAllowedModels', () => {
   });
 });
 
+// Tests for the panel-adopted helper extracted from src/index.js handler in
+// the (review) cycle: handler
+// validation was untestable inline). Covers the input-domain matrix.
 describe('getInvalidFallbackEntries', () => {
   const allowed = new Set(['m1', 'm2', 'm3']);
 
@@ -232,5 +236,168 @@ describe('getInvalidFallbackEntries', () => {
     const input = ['m1', 'bogus'];
     getInvalidFallbackEntries(input, allowed);
     expect(input).toEqual(['m1', 'bogus']);
+  });
+});
+
+// Pure-function tests for the validation
+// logic extracted from the live MCP handler + startup guards in src/index.js.
+// Tests are pure functions; no MCP runtime harness needed.
+import { validateAskModelRequest, validateStartupEnv } from '../src/config.js';
+
+describe('validateStartupEnv', () => {
+  test('returns null when both env vars set with non-empty parsed allowlist', () => {
+    expect(validateStartupEnv({
+      OPENROUTER_API_KEY: 'sk-or-test',
+      OPENROUTER_ALLOWED_MODELS: 'm1,m2',
+    })).toBeNull();
+  });
+
+  test('rejects missing OPENROUTER_API_KEY (empty string treated as missing)', () => {
+    const err = validateStartupEnv({
+      OPENROUTER_API_KEY: '',
+      OPENROUTER_ALLOWED_MODELS: 'm1',
+    });
+    expect(err).toContain('OPENROUTER_API_KEY environment variable is required');
+  });
+
+  test('rejects undefined OPENROUTER_API_KEY', () => {
+    const err = validateStartupEnv({
+      OPENROUTER_ALLOWED_MODELS: 'm1',
+    });
+    expect(err).toContain('OPENROUTER_API_KEY environment variable is required');
+  });
+
+  test('rejects missing OPENROUTER_ALLOWED_MODELS', () => {
+    const err = validateStartupEnv({
+      OPENROUTER_API_KEY: 'sk-or-test',
+    });
+    expect(err).toContain('OPENROUTER_ALLOWED_MODELS environment variable is required');
+  });
+
+  test('rejects OPENROUTER_ALLOWED_MODELS that parses to empty (just commas)', () => {
+    const err = validateStartupEnv({
+      OPENROUTER_API_KEY: 'sk-or-test',
+      OPENROUTER_ALLOWED_MODELS: ',,,',
+    });
+    expect(err).toContain('contains no valid model IDs after parsing');
+  });
+
+  test('rejects OPENROUTER_ALLOWED_MODELS that is whitespace-only', () => {
+    const err = validateStartupEnv({
+      OPENROUTER_API_KEY: 'sk-or-test',
+      OPENROUTER_ALLOWED_MODELS: '   ',
+    });
+    expect(err).toContain('contains no valid model IDs after parsing');
+  });
+
+  test('check order: API_KEY before ALLOWED_MODELS', () => {
+    const err = validateStartupEnv({});
+    expect(err).toContain('OPENROUTER_API_KEY');
+    expect(err).not.toContain('OPENROUTER_ALLOWED_MODELS');
+  });
+
+  test('accepts trimmed entries even with whitespace padding', () => {
+    expect(validateStartupEnv({
+      OPENROUTER_API_KEY: 'sk-or-test',
+      OPENROUTER_ALLOWED_MODELS: ' m1 , m2 ',
+    })).toBeNull();
+  });
+});
+
+describe('validateAskModelRequest', () => {
+  const allowed = new Set(['m1', 'm2', 'm3']);
+
+  test('returns null when request is valid (no fallback_models)', () => {
+    expect(validateAskModelRequest(
+      { model: 'm1', append_files: ['/path/file.txt'] },
+      allowed
+    )).toBeNull();
+  });
+
+  test('returns null when request is valid (with valid fallback_models)', () => {
+    expect(validateAskModelRequest(
+      { model: 'm1', append_files: ['/path/file.txt'], fallback_models: ['m2', 'm3'] },
+      allowed
+    )).toBeNull();
+  });
+
+  test('returns null when append_files is the placeholder ([""])', () => {
+    // The upstream contract: pass [""] when no files relevant. Length is 1, not 0.
+    expect(validateAskModelRequest(
+      { model: 'm1', append_files: [''] },
+      allowed
+    )).toBeNull();
+  });
+
+  test('rejects undefined append_files with the canonical message', () => {
+    const err = validateAskModelRequest({ model: 'm1' }, allowed);
+    expect(err).toContain('Files relevant to the context must be appended');
+    expect(err).toContain('pass [""]');
+  });
+
+  test('rejects empty array append_files', () => {
+    const err = validateAskModelRequest(
+      { model: 'm1', append_files: [] },
+      allowed
+    );
+    expect(err).toContain('Files relevant to the context');
+  });
+
+  test('rejects model not in allowlist; message includes allowed list', () => {
+    const err = validateAskModelRequest(
+      { model: 'bogus', append_files: [''] },
+      allowed
+    );
+    expect(err).toContain('Model "bogus" is not allowed');
+    expect(err).toContain('m1, m2, m3');
+  });
+
+  test('rejects when ANY fallback_models entry is not in allowlist', () => {
+    const err = validateAskModelRequest(
+      { model: 'm1', append_files: [''], fallback_models: ['m2', 'bogus'] },
+      allowed
+    );
+    expect(err).toContain('fallback_models contains entries not in OPENROUTER_ALLOWED_MODELS');
+    expect(err).toContain('bogus');
+    expect(err).toContain('m1, m2, m3');
+  });
+
+  test('lists ALL invalid fallback_models entries (not just the first)', () => {
+    const err = validateAskModelRequest(
+      { model: 'm1', append_files: [''], fallback_models: ['x', 'm1', 'y', 'z'] },
+      allowed
+    );
+    expect(err).toContain('x, y, z');
+  });
+
+  test('order of validation: append_files before model check', () => {
+    // Even with a bad model, append_files error fires first.
+    const err = validateAskModelRequest(
+      { model: 'bogus', append_files: [] },
+      allowed
+    );
+    expect(err).toContain('Files relevant to the context');
+    expect(err).not.toContain('not allowed');
+  });
+
+  test('order of validation: model check before fallback check', () => {
+    // Bad model + bad fallbacks → model error fires first.
+    const err = validateAskModelRequest(
+      { model: 'bogus', append_files: [''], fallback_models: ['x'] },
+      allowed
+    );
+    expect(err).toContain('Model "bogus" is not allowed');
+    expect(err).not.toContain('fallback_models contains entries');
+  });
+
+  test('does NOT mutate inputs', () => {
+    const fallbacks = ['m1', 'bogus'];
+    const append = ['/file'];
+    validateAskModelRequest(
+      { model: 'm1', append_files: append, fallback_models: fallbacks },
+      allowed
+    );
+    expect(fallbacks).toEqual(['m1', 'bogus']);
+    expect(append).toEqual(['/file']);
   });
 });
